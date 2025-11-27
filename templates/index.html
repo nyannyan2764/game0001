@@ -23,9 +23,24 @@
             <button id="sidebar-close" class="close-btn"><i class="fas fa-times"></i></button>
         </div>
         
+        <!-- チームスコア表示に変更 -->
         <div class="sidebar-section">
-            <h3><i class="fas fa-users"></i> スコアボード</h3>
-            <ul id="score-list">
+            <h3><i class="fas fa-trophy"></i> チームスコア</h3>
+            <div id="team-score-container" class="team-score-box">
+                <div class="score-row citizen">
+                    <span class="label"><i class="fas fa-user-shield"></i> 市民</span>
+                    <span id="score-citizen-val" class="value">0pt</span>
+                </div>
+                <div class="score-row traitor">
+                    <span class="label"><i class="fas fa-user-secret"></i> 裏切り者</span>
+                    <span id="score-traitor-val" class="value">0pt</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <h3><i class="fas fa-users"></i> 参加者</h3>
+            <ul id="sidebar-player-list" class="styled-list-simple">
                 <!-- JSで生成 -->
             </ul>
         </div>
@@ -33,10 +48,10 @@
         <div class="sidebar-section">
             <h3><i class="fas fa-book"></i> ルール</h3>
             <div class="rules-text">
-                <p><strong>勝利条件:</strong> 最終得点が高い人の勝ち</p>
-                <p><strong>市民:</strong> 誤差を<span id="rule-error-val"></span>%未満に抑える。</p>
+                <p><strong>勝利条件:</strong> 最終的に得点が高いチームの勝ち</p>
+                <p><strong>市民チーム:</strong> 誤差を<span id="rule-error-val"></span>%未満に抑える。</p>
                 <p><strong>裏切り者:</strong> 誤差を<span id="rule-error-val-2"></span>%以上にして妨害する。正解が見えている。</p>
-                <p><strong>VOTE:</strong> 最後に裏切り者を当てれば市民の勝利。</p>
+                <p><strong>VOTE:</strong> 最後に裏切り者を当てれば市民の勝利（裏切り者のスコア没収）。外すと裏切り者のスコアが倍増。</p>
             </div>
         </div>
 
@@ -156,14 +171,25 @@
             <div class="card glass-panel result-card">
                 <h2>GAME SET</h2>
                 <p id="final-message" class="final-msg"></p>
+                
                 <div class="traitor-reveal">
                     裏切り者は... <br>
                     <span id="final-traitor-name" class="reveal-name"></span>
                 </div>
                 
-                <div class="ranking-area">
-                    <h3>最終ランキング</h3>
-                    <ul id="final-ranking" class="ranking-list"></ul>
+                <!-- チーム結果表示に変更 -->
+                <div class="final-score-area">
+                    <h3>最終スコア</h3>
+                    <div class="final-team-score citizen" id="final-citizen-score-box">
+                        <span class="team-name"><i class="fas fa-user-shield"></i> 市民チーム</span>
+                        <span class="team-point" id="final-citizen-point">0pt</span>
+                        <span class="win-lose-badge" id="citizen-win-lose"></span>
+                    </div>
+                    <div class="final-team-score traitor" id="final-traitor-score-box">
+                        <span class="team-name"><i class="fas fa-user-secret"></i> 裏切り者</span>
+                        <span class="team-point" id="final-traitor-point">0pt</span>
+                        <span class="win-lose-badge" id="traitor-win-lose"></span>
+                    </div>
                 </div>
 
                 <button id="game-reset-btn" class="btn-danger">ゲーム終了 (全員リセット)</button>

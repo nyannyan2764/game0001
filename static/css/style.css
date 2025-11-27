@@ -192,6 +192,25 @@ button {
     font-size: 1.2rem;
 }
 
+/* --- チームスコア表示 (サイドバー) --- */
+.team-score-box {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 10px;
+}
+.score-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    font-weight: bold;
+}
+.score-row.citizen { color: var(--accent-blue); border-bottom: 1px solid #334155; }
+.score-row.traitor { color: var(--accent-red); }
+.score-row .label i { margin-right: 8px; }
+.score-row .value { font-family: var(--font-display); font-size: 1.2rem; }
+
+
 /* チャット・ログ */
 .chat-box, .chat-box-large {
     background: #0f172a;
@@ -239,7 +258,7 @@ button {
 }
 
 /* リスト */
-.styled-list { list-style: none; padding: 0; }
+.styled-list, .styled-list-simple { list-style: none; padding: 0; }
 .styled-list li {
     background: rgba(255, 255, 255, 0.05);
     margin-bottom: 5px;
@@ -248,9 +267,7 @@ button {
     display: flex;
     justify-content: space-between;
 }
-.score-item {
-    display: flex;
-    justify-content: space-between;
+.styled-list-simple li {
     padding: 5px 0;
     border-bottom: 1px solid #334155;
 }
@@ -310,18 +327,33 @@ button {
     color: var(--accent-red);
     font-family: var(--font-display);
 }
-.ranking-list li {
+
+/* 最終チームスコア */
+.final-score-area {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 20px 0;
+}
+.final-team-score {
     display: flex;
     justify-content: space-between;
-    padding: 10px;
-    background: #1e293b;
-    margin-bottom: 5px;
-    border-radius: 4px;
-}
-.ranking-list li:first-child {
-    background: linear-gradient(90deg, #f59e0b, #d97706);
-    color: #000;
+    align-items: center;
+    padding: 15px;
+    border-radius: 8px;
+    background: #334155;
     font-weight: bold;
+}
+.final-team-score.citizen { border-left: 5px solid var(--accent-blue); }
+.final-team-score.traitor { border-left: 5px solid var(--accent-red); }
+.team-name i { margin-right: 5px; }
+.team-point { font-family: var(--font-display); font-size: 1.2rem; }
+.win-lose-badge {
+    background: #000;
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
 }
 
 /* スマホ最適化 */

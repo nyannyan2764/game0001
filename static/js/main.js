@@ -25,7 +25,7 @@ function showScreen(screenId) {
     screens[screenId].classList.add('active');
 }
 
-// 接続後、UUIDを送って復帰判定
+// 接続後
 socket.on('connect', () => {
     console.log("Connected");
 });
@@ -42,8 +42,7 @@ document.getElementById('join-btn').addEventListener('click', () => {
 socket.on('self_info', (data) => {
     mySid = data.sid;
     myRole = data.role;
-    // 画面遷移はstatus updateで制御されるが、初回ログイン時はロビーへ
-    showScreen('lobby');
+    updateRoleDisplay();
 });
 
 socket.on('error_msg', (data) => {
@@ -78,13 +77,15 @@ socket.on('update_status', (data) => {
         document.getElementById('set-error').value = data.settings.error_margin;
         document.getElementById('set-multi').value = data.settings.traitor_multiplier;
         
-        // ルール表示更新
         document.getElementById('rule-error-val').innerText = data.settings.error_margin;
         document.getElementById('rule-error-val-2').innerText = data.settings.error_margin;
     }
 
     // プレイヤーリスト更新 (ロビー & サイドバー)
-    updatePlayerLists(data.players, data.status);
+    updatePlayerLists(data.players);
+    
+    // チームスコア更新
+    updateTeamScores(data.team_scores);
 
     // 画面遷移制御
     if (data.status === 'LOBBY') showScreen('lobby');
@@ -92,10 +93,10 @@ socket.on('update_status', (data) => {
     else if (data.status === 'VOTING') showScreen('voting');
     else if (data.status === 'RESULT') showScreen('result');
 
-    // 自分の役割再確認（リロード時など）
+    // 自分の役割再確認
     const me = data.players.find(p => p.sid === mySid);
     if(me) {
-        myRole = me.role; // サーバー側の最新ロール
+        myRole = me.role;
         updateRoleDisplay();
     }
     
@@ -108,9 +109,16 @@ socket.on('update_status', (data) => {
         readyBtn.classList.remove('ready');
         readyBtn.innerText = "準備完了";
     }
+
+    // 復帰時のクイズ情報復元
+    if(data.status === 'PLAYING' && data.current_quiz_data) {
+        document.getElementById('current-round-num').innerText = data.current_round;
+        document.getElementById('quiz-text').innerText = data.current_quiz_data.q;
+        document.getElementById('unit-label').innerText = data.current_quiz_data.u;
+    }
 });
 
-function updatePlayerLists(players, status) {
+function updatePlayerLists(players) {
     // ロビーリスト
     const lobbyList = document.getElementById('lobby-player-list');
     lobbyList.innerHTML = '';
@@ -125,17 +133,24 @@ function updatePlayerLists(players, status) {
         lobbyList.appendChild(li);
     });
 
-    // スコアリスト (サイドバー)
-    const scoreList = document.getElementById('score-list');
-    scoreList.innerHTML = '';
+    // サイドバーの参加者リスト（スコアはチーム管理になったため名前のみ）
+    const sidebarList = document.getElementById('sidebar-player-list');
+    sidebarList.innerHTML = '';
     players.forEach(p => {
         const li = document.createElement('li');
-        li.className = 'score-item';
-        // ゲーム中・結果時はポイントを表示
-        const scoreText = (status === 'LOBBY') ? '-' : `${p.score}pt`;
-        li.innerHTML = `<span>${p.name}</span> <span style="color:var(--accent-gold)">${scoreText}</span>`;
-        scoreList.appendChild(li);
+        li.innerHTML = `<span>${p.name}</span>`;
+        sidebarList.appendChild(li);
     });
+}
+
+function updateTeamScores(scores) {
+    if(!scores) return;
+    document.getElementById('score-citizen-val').innerText = `${scores.citizen}pt`;
+    document.getElementById('score-traitor-val').innerText = `${scores.traitor}pt`;
+    
+    // 結果画面用
+    document.getElementById('final-citizen-point').innerText = `${scores.citizen}pt`;
+    document.getElementById('final-traitor-point').innerText = `${scores.traitor}pt`;
 }
 
 function updateRoleDisplay() {
@@ -154,7 +169,6 @@ function updateRoleDisplay() {
 
 // 4. チャット
 document.getElementById('send-chat-btn').addEventListener('click', sendChat);
-// Enterキーでも送信
 document.getElementById('chat-input').addEventListener('keypress', (e) => {
     if(e.key === 'Enter') sendChat();
 });
@@ -180,9 +194,7 @@ socket.on('chat_history', (logs) => {
 });
 
 function appendChat(entry) {
-    // メインとサイドバー両方に追加
     const targets = [document.getElementById('game-chat-box'), document.getElementById('chat-history')];
-    
     targets.forEach(box => {
         const div = document.createElement('div');
         div.className = `chat-msg ${entry.type}`;
@@ -198,7 +210,6 @@ function appendChat(entry) {
 
 // 5. ゲーム進行 (ラウンド)
 socket.on('new_round', (data) => {
-    // 画面リセット
     document.getElementById('round-result-overlay').classList.remove('active');
     document.getElementById('my-answer-controls').style.display = "none";
     document.getElementById('next-round-btn').style.display = "inline-block";
@@ -208,7 +219,7 @@ socket.on('new_round', (data) => {
     document.getElementById('quiz-text').innerText = data.quiz;
     document.getElementById('answerer-name').innerText = data.answerer_name;
     document.getElementById('unit-label').innerText = data.unit;
-    document.getElementById('hint-value').innerText = "..."; // 裏切り者用ヒントは別途
+    document.getElementById('hint-value').innerText = "...";
 });
 
 socket.on('traitor_hint', (data) => {
@@ -249,24 +260,41 @@ socket.on('start_voting', () => {
     const container = document.getElementById('vote-buttons');
     container.innerHTML = '';
     
-    // プレイヤーリスト取得のためDOM参照（またはメモリ保持）
-    // update_statusで最新リストがメモリにあると仮定、あるいはサイドバーから取得
-    const items = document.querySelectorAll('#lobby-player-list li span:first-child');
-    // 簡単のためサーバーにリクエストしてないが、update_statusで受け取ったデータを使いたい。
-    // ここではグローバル変数はないので、sidebarのDOMから名前を取得するのは不確実。
-    // update_statusのdata.playersをグローバル変数に保存するのが適切
+    // プレイヤーリスト取得のためサイドバーから名前を拾う簡易実装ではなく、
+    // ここではグローバルな状態保持をしていないため、サーバーからのupdate_statusを待つのが確実だが、
+    // update_statusがこの後に来る保証があるため、DOM生成はupdate_status内のrenderVoteButtonsに任せる。
+    // しかし、update_statusがVOTING状態で呼ばれるのでそちらで描画される。
 });
 
-// 投票画面構築は update_status 内で行うのが安全だが、ロジック分離のためここで
+// 投票画面構築は update_status 内で行う
 let currentPlayers = [];
 socket.on('update_status', (data) => {
     currentPlayers = data.players;
-    if(data.status === 'VOTING') renderVoteButtons(data.players);
+    if(data.status === 'VOTING') {
+        renderVoteButtons(data.players);
+    }
+    // 結果画面で勝敗バッジをつける
+    if(data.status === 'RESULT' && data.winner_team) {
+         const citBadge = document.getElementById('citizen-win-lose');
+         const traBadge = document.getElementById('traitor-win-lose');
+         
+         if(data.winner_team === 'citizen') {
+             citBadge.innerText = "WIN"; citBadge.style.background = "var(--accent-gold)"; citBadge.style.color="black";
+             traBadge.innerText = "LOSE"; traBadge.style.background = "#333"; traBadge.style.color="white";
+         } else if (data.winner_team === 'traitor') {
+             traBadge.innerText = "WIN"; traBadge.style.background = "var(--accent-gold)"; traBadge.style.color="black";
+             citBadge.innerText = "LOSE"; citBadge.style.background = "#333"; citBadge.style.color="white";
+         } else {
+             citBadge.innerText = "DRAW";
+             traBadge.innerText = "DRAW";
+         }
+    }
 });
 
 function renderVoteButtons(players) {
     const container = document.getElementById('vote-buttons');
-    if(container.children.length > 0) return; // 既に描画済みならスキップ
+    // ボタンがすでにある場合は再描画しない（選択状態維持のため）
+    if(container.children.length > 0) return;
 
     players.forEach(p => {
         if (p.sid === mySid) return; // 自分には投票できない
@@ -293,16 +321,7 @@ socket.on('game_over', (data) => {
     document.getElementById('final-message').innerText = data.msg;
     document.getElementById('final-traitor-name').innerText = data.traitor_name;
     
-    const rankList = document.getElementById('final-ranking');
-    rankList.innerHTML = '';
-    data.ranking.forEach((p, index) => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-            <span>#${index+1} ${p.name} (${p.role === 'traitor' ? '裏' : '市'})</span>
-            <span>${p.score}pt</span>
-        `;
-        rankList.appendChild(li);
-    });
+    // スコアは update_status で更新されるのでここではメッセージ系のみ
 });
 
 document.getElementById('game-reset-btn').addEventListener('click', () => {
