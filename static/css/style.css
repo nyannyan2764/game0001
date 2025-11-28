@@ -192,7 +192,7 @@ button {
     font-size: 1.2rem;
 }
 
-/* チームスコア */
+/* --- チームスコア表示 (サイドバー) --- */
 .team-score-box {
     background: rgba(0, 0, 0, 0.2);
     border-radius: 8px;
@@ -235,8 +235,26 @@ button {
 }
 .chat-box { height: 200px; }
 .chat-box-large { height: 300px; margin-bottom: 10px; border: 1px solid #334155; }
-.chat-msg { margin-bottom: 5px; border-bottom: 1px solid #1e293b; padding-bottom: 2px; }
-.chat-msg.system { color: var(--accent-gold); font-size: 0.8rem; text-align: center; }
+
+/* メッセージスタイルの修正: PCでも見やすく */
+.chat-msg { 
+    margin-bottom: 5px; 
+    border-bottom: 1px solid #1e293b; 
+    padding-bottom: 2px; 
+    word-wrap: break-word;
+}
+/* システムログ（オレンジ色）を強調 */
+.chat-msg.system { 
+    color: #ffaa00; /* 明るいオレンジに変更 */
+    font-size: 0.9rem; 
+    font-weight: bold; 
+    text-align: center;
+    background: rgba(255, 170, 0, 0.15); /* 背景色を追加して視認性アップ */
+    border-radius: 4px;
+    padding: 4px;
+    margin: 5px 0;
+    border: 1px solid rgba(255, 170, 0, 0.2);
+}
 .chat-msg.user span { font-weight: bold; color: var(--accent-blue); }
 
 .chat-input-row {
@@ -369,9 +387,11 @@ button {
     font-size: 0.8rem;
 }
 
+/* スマホ最適化 */
 @media (max-width: 600px) {
     .game-title { font-size: 1.8rem; }
     .glass-panel { padding: 15px; }
     .btn-primary { padding: 10px; }
+    /* キーボードが出ても隠れないように */
     .discussion-area { padding-bottom: 20px; }
 }

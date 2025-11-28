@@ -77,13 +77,16 @@ document.getElementById('ready-btn').addEventListener('click', () => {
 socket.on('update_status', (data) => {
     gameSettings = data.settings;
 
-    // 設定反映
-    if(data.status === 'LOBBY') {
+    // ★修正: どの画面にいても、サーバーの設定情報を必ず画面に反映する
+    // これにより復帰時も正しいルールが表示される
+    if (data.settings) {
+        // 入力フォームの値も同期
         document.getElementById('set-rounds').value = data.settings.total_rounds;
         document.getElementById('set-error').value = data.settings.error_margin;
         document.getElementById('set-multi').value = data.settings.traitor_multiplier;
         document.getElementById('set-time').value = data.settings.time_limit;
         
+        // ルール表示欄の値も同期
         document.getElementById('rule-error-val').innerText = data.settings.error_margin;
         document.getElementById('rule-error-val-2').innerText = data.settings.error_margin;
         document.getElementById('rule-time-val').innerText = data.settings.time_limit;
@@ -194,6 +197,7 @@ socket.on('chat_history', (logs) => {
 function appendChat(entry) {
     const targets = [document.getElementById('game-chat-box'), document.getElementById('chat-history')];
     targets.forEach(box => {
+        if (!box) return; // boxが存在しない場合はスキップ
         const div = document.createElement('div');
         div.className = `chat-msg ${entry.type}`;
         if(entry.type === 'system') {
@@ -219,20 +223,14 @@ socket.on('new_round', (data) => {
     document.getElementById('unit-label').innerText = data.unit;
     document.getElementById('hint-value').innerText = "...";
     
-    // タイマー開始 (サーバーからの経過時間を受け取って同期)
     startTimer(data.elapsed_time || 0);
 });
 
-// タイマー制御関数
 function startTimer(elapsedSeconds) {
-    // 既存のタイマーがあればクリア
     if(timerInterval) clearInterval(timerInterval);
     
-    // 設定時間(分)を秒に変換
     const limitMinutes = parseInt(gameSettings.time_limit || 3);
     const totalSeconds = limitMinutes * 60;
-    
-    // 現在の残り時間を計算 (総時間 - 経過時間)
     let remaining = totalSeconds - Math.floor(elapsedSeconds);
     
     const display = document.getElementById('time-remaining');
@@ -245,7 +243,6 @@ function startTimer(elapsedSeconds) {
             display.innerText = "00:00";
             display.style.color = "red";
             
-            // 時間切れイベント送信 (1回だけ)
             if(!isTimeUpSent) {
                 isTimeUpSent = true;
                 socket.emit('time_up');
@@ -260,7 +257,7 @@ function startTimer(elapsedSeconds) {
         remaining--;
     }
     
-    updateDisplay(); // 初回表示
+    updateDisplay();
     timerInterval = setInterval(updateDisplay, 1000);
 }
 
@@ -279,7 +276,6 @@ document.getElementById('submit-answer-btn').addEventListener('click', () => {
     document.getElementById('final-answer').value = '';
 });
 
-// リザルト受信
 socket.on('round_result', (data) => {
     const overlay = document.getElementById('round-result-overlay');
     document.getElementById('res-user-ans').innerText = `${data.user_ans} ${data.unit}`;
@@ -287,7 +283,6 @@ socket.on('round_result', (data) => {
     document.getElementById('res-error').innerText = data.error;
     document.getElementById('res-winner').innerText = data.winner;
     
-    // タイマーストップ
     if(timerInterval) clearInterval(timerInterval);
     
     overlay.classList.add('active');
@@ -349,7 +344,6 @@ function renderVoteButtons(players) {
     });
 }
 
-// 7. ゲーム終了
 socket.on('game_over', (data) => {
     document.getElementById('final-message').innerText = data.msg;
     document.getElementById('final-traitor-name').innerText = data.traitor_name;
