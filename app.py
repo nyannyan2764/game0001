@@ -32,9 +32,9 @@ class GameState:
         self.ack_next = set()
         self.ack_game_over = set()
         self.chat_log = []
-        self.uuid_map = {} # {uuid: sid}
+        self.uuid_map = {} # {uuid: sid} は今回は補助的に使うが、名前優先にする
         
-        # ★追加: 現在接続中のソケットIDを管理するセット
+        # 現在接続中のソケットID
         self.connected_sids = set()
 
     def get_player_list(self):
@@ -51,66 +51,99 @@ def index():
 
 @socketio.on('connect')
 def on_connect():
-    # 接続されたらIDを記録
     game.connected_sids.add(request.sid)
     print(f"Client connected: {request.sid}")
 
 @socketio.on('disconnect')
 def on_disconnect():
-    # 切断されたらIDを削除
     game.connected_sids.discard(request.sid)
     print(f"Client disconnected: {request.sid}")
-    # ゲーム進行判定（誰かが落ちたことで全員揃ったことになる場合があるため）
+    # ゲーム進行判定（生存者のみで進行するため）
     check_next_round_progress()
     check_game_over_progress()
 
 @socketio.on('join_game')
 def on_join(data):
-    user_uuid = data.get('uuid')
     user_name = data.get('name')
+    user_uuid = data.get('uuid') # UUIDも一応受け取るが名前判定を優先
     
-    # --- 復帰処理 ---
-    existing_sid = game.uuid_map.get(user_uuid)
+    # 1. 名前で既存プレイヤーを探す
+    existing_sid = None
+    for sid, p in game.players.items():
+        if p['name'] == user_name:
+            existing_sid = sid
+            break
     
-    # 既存IDがあり、かつプレイヤーリストに残っている場合 (復帰)
-    if existing_sid and existing_sid in game.players:
-        old_player_data = game.players[existing_sid]
-        del game.players[existing_sid] # 古いSID削除
-        game.players[request.sid] = old_player_data # 新しいSIDで登録
-        game.uuid_map[user_uuid] = request.sid # マップ更新
+    if existing_sid:
+        # --- 名前が見つかった場合 (復帰または重複) ---
         
-        # プレイヤー自身の情報を返す
-        emit('self_info', {'sid': request.sid, 'role': old_player_data['role']})
-        
-        # 復帰時に現在のクイズ情報を個別に送る
-        if game.status == "PLAYING" and game.current_quiz:
-             payload = {
-                "round": game.current_round,
-                "quiz": game.current_quiz['q'],
-                "unit": game.current_quiz['u'],
-                "answerer_name": game.players[game.current_answerer_sid]['name'] if game.current_answerer_sid in game.players else "不明"
-            }
-             emit('new_round', payload, room=request.sid)
-             if game.current_answerer_sid == request.sid:
-                 emit('your_turn_to_answer', {}, room=request.sid)
-             if old_player_data['role'] == 'traitor':
-                 emit('traitor_hint', {"answer": game.current_quiz['a']}, room=request.sid)
+        # そのSIDが現在も接続中か？
+        if existing_sid in game.connected_sids:
+            # 接続中なら、なりすまし防止のためエラー
+            emit('error_msg', {'msg': f'「{user_name}」は既に参加中です。別の名前を使ってください。'})
+            return
+        else:
+            # --- 復帰処理 (切断されている場合) ---
+            old_player_data = game.players[existing_sid]
+            
+            # データの移行 (古いSID -> 新しいSID)
+            del game.players[existing_sid]
+            game.players[request.sid] = old_player_data
+            
+            # 各種ID参照の書き換え
+            if game.traitor_sid == existing_sid:
+                game.traitor_sid = request.sid
+            
+            if game.current_answerer_sid == existing_sid:
+                game.current_answerer_sid = request.sid
+            
+            # 投票データの書き換え
+            if existing_sid in game.votes:
+                target = game.votes[existing_sid]
+                del game.votes[existing_sid]
+                game.votes[request.sid] = target
+            
+            # 復帰情報を返す
+            emit('self_info', {'sid': request.sid, 'role': old_player_data['role']})
+            
+            # 現在のクイズ状態を個別に送信
+            if game.status == "PLAYING" and game.current_quiz:
+                ans_name = "不明"
+                if game.current_answerer_sid in game.players:
+                    ans_name = game.players[game.current_answerer_sid]['name']
+                
+                payload = {
+                    "round": game.current_round,
+                    "quiz": game.current_quiz['q'],
+                    "unit": game.current_quiz['u'],
+                    "answerer_name": ans_name
+                }
+                emit('new_round', payload, room=request.sid)
+                
+                # 自分が回答者だった場合
+                if game.current_answerer_sid == request.sid:
+                    emit('your_turn_to_answer', {}, room=request.sid)
+                
+                # 自分が裏切り者だった場合
+                if old_player_data['role'] == 'traitor':
+                    emit('traitor_hint', {"answer": game.current_quiz['a']}, room=request.sid)
 
-        game.chat_log.append({"type": "system", "text": f"{old_player_data['name']}さんが復帰しました。"})
-
+            game.chat_log.append({"type": "system", "text": f"{user_name}さんが復帰しました。"})
+    
     else:
         # --- 新規参加 ---
+        
+        # ゲーム中なら新規参加拒否
         if game.status != "LOBBY":
-             emit('error_msg', {'msg': 'ゲーム進行中のため参加できません'})
+             emit('error_msg', {'msg': 'ゲーム進行中のため、新しい名前では参加できません。復帰する場合は元の名前を入力してください。'})
              return
              
         game.players[request.sid] = {
             "name": user_name,
             "is_ready": False,
-            "role": "citizen", # 初期値
+            "role": "citizen",
             "id": user_uuid
         }
-        game.uuid_map[user_uuid] = request.sid
         emit('self_info', {'sid': request.sid, 'role': 'citizen'})
 
     # 状態同期
@@ -153,7 +186,7 @@ def start_game():
 
 def start_new_round():
     game.current_round += 1
-    game.ack_next = set() # リセット
+    game.ack_next = set()
     
     if game.current_round > int(game.settings['total_rounds']):
         start_voting_phase()
@@ -174,18 +207,26 @@ def start_new_round():
     
     game.chat_log.append({"type": "system", "text": f"第{game.current_round}問: {game.current_quiz['q']}"})
     
+    # 回答者の名前を取得（切断中でもデータはあるので名前は取れる）
+    ans_name = "不明"
+    if game.current_answerer_sid in game.players:
+        ans_name = game.players[game.current_answerer_sid]['name']
+    
     payload = {
         "round": game.current_round,
         "quiz": game.current_quiz['q'],
         "unit": game.current_quiz['u'],
-        "answerer_name": game.players[game.current_answerer_sid]['name']
+        "answerer_name": ans_name
     }
     
     emit('new_round', payload, broadcast=True)
     
-    emit('your_turn_to_answer', {}, room=game.current_answerer_sid)
+    # 回答者が接続中なら通知
+    if game.current_answerer_sid in game.connected_sids:
+        emit('your_turn_to_answer', {}, room=game.current_answerer_sid)
     
-    if game.traitor_sid in game.players:
+    # 裏切り者が接続中ならヒント
+    if game.traitor_sid in game.connected_sids:
         emit('traitor_hint', {"answer": game.current_quiz['a']}, room=game.traitor_sid)
     
     emit_update_all()
@@ -201,6 +242,7 @@ def on_chat(data):
 
 @socketio.on('submit_answer')
 def on_submit_answer(data):
+    # 名前で復帰するのでSIDが変わってもTurn判定は追従される
     if request.sid != game.current_answerer_sid:
         return
         
@@ -211,13 +253,11 @@ def on_submit_answer(data):
 
     true_ans = game.current_quiz['a']
     
-    # 誤差計算
     if true_ans == 0:
         error_pct = abs(user_ans - true_ans) * 100
     else:
         error_pct = abs((user_ans - true_ans) / true_ans) * 100
     
-    # ポイント判定
     threshold = float(game.settings['error_margin'])
     points = 100
     winner_role_msg = ""
@@ -247,14 +287,12 @@ def on_next_ack():
     check_next_round_progress()
 
 def check_next_round_progress():
-    # ★修正: 「現在接続中」かつ「ゲーム参加中」のプレイヤーのみを分母にする
+    # 接続中かつゲーム参加中のプレイヤー
     active_players = [sid for sid in game.players if sid in game.connected_sids]
     if not active_players: return
 
-    # Ack済み、かつ現在も接続中のプレイヤー
     active_acks = [sid for sid in game.ack_next if sid in game.connected_sids]
 
-    # 全員(生存者)がAckしたら次へ
     if len(active_acks) >= len(active_players):
         start_new_round()
 
@@ -272,7 +310,6 @@ def on_submit_vote(data):
     
     game.votes[request.sid] = target_sid
     
-    # 生存者のみで判定
     active_players = [sid for sid in game.players if sid in game.connected_sids]
     active_votes = [sid for sid in game.votes if sid in game.connected_sids]
     
