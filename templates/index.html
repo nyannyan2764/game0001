@@ -48,10 +48,10 @@
         <div class="sidebar-section">
             <h3><i class="fas fa-book"></i> ルール</h3>
             <div class="rules-text">
-                <p><strong>勝利条件:</strong> 最終的に得点が高いチームの勝ち</p>
-                <p><strong>市民チーム:</strong> 誤差を<span id="rule-error-val"></span>%未満に抑える。</p>
-                <p><strong>裏切り者:</strong> 誤差を<span id="rule-error-val-2"></span>%以上にして妨害する。正解が見えている。</p>
-                <p><strong>VOTE:</strong> 最後に裏切り者を当てれば市民の勝利（裏切り者のスコア没収）。外すと裏切り者のスコアが倍増。</p>
+                <p><strong>勝利条件:</strong> 最終的に得点が高いチームの勝ちです。</p>
+                <p><strong>市民チーム:</strong> 誤差を<span id="rule-error-val"></span>%未満に抑えてください。</p>
+                <p><strong>裏切り者:</strong> 誤差を<span id="rule-error-val-2"></span>%以上にして妨害してください。正解は画面に見えています。</p>
+                <p><strong>VOTE:</strong> 最後に裏切り者を当てれば市民の勝利です（裏切り者の全スコアを没収します）。外すと裏切り者のスコアが設定に応じて倍増します。</p>
             </div>
         </div>
 
@@ -63,7 +63,7 @@
 
     <!-- メインコンテンツ -->
     <main class="main-container">
-        <h1 class="game-title">Azure Game <span class="subtitle">HORAFUKI</span></h1>
+        <h1 class="game-title"> Game <span class="subtitle"> 嘘つき </span></h1>
 
         <!-- 1. ログイン画面 -->
         <section id="login-screen" class="screen active">
@@ -148,7 +148,7 @@
                     <p>正解: <span id="res-true-ans"></span></p>
                     <p>誤差: <span id="res-error"></span>%</p>
                     <div class="winner-box">
-                        <span id="res-winner"></span> にポイント！
+                        <span id="res-winner"></span> に100ポイント追加されました
                     </div>
                     <button id="next-round-btn" class="btn-primary">次へ</button>
                     <p id="next-wait-msg">他のプレイヤーを待っています...</p>
@@ -159,7 +159,7 @@
         <!-- 4. 投票画面 -->
         <section id="voting-screen" class="screen">
             <div class="card glass-panel">
-                <h2>FINAL VOTE</h2>
+                <h2>投票</h2>
                 <p>裏切り者だと思う人を指名してください</p>
                 <div id="vote-buttons" class="grid-buttons"></div>
                 <p id="vote-wait-msg" style="display:none;">投票完了。結果を待っています...</p>
@@ -192,7 +192,7 @@
                     </div>
                 </div>
 
-                <button id="game-reset-btn" class="btn-danger">ゲーム終了 (全員リセット)</button>
+                <button id="game-reset-btn" class="btn-danger">ゲーム終了</button>
                 <p id="reset-wait-msg" style="display:none;">全員の終了確認待ち...</p>
             </div>
         </section>
