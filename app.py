@@ -33,6 +33,9 @@ class GameState:
         self.ack_game_over = set()
         self.chat_log = []
         self.uuid_map = {} # {uuid: sid}
+        
+        # ★追加: 現在接続中のソケットIDを管理するセット
+        self.connected_sids = set()
 
     def get_player_list(self):
         return [{"name": p["name"], "is_ready": p["is_ready"], "sid": sid, "id": p["id"], "role": p["role"]} 
@@ -48,7 +51,18 @@ def index():
 
 @socketio.on('connect')
 def on_connect():
+    # 接続されたらIDを記録
+    game.connected_sids.add(request.sid)
     print(f"Client connected: {request.sid}")
+
+@socketio.on('disconnect')
+def on_disconnect():
+    # 切断されたらIDを削除
+    game.connected_sids.discard(request.sid)
+    print(f"Client disconnected: {request.sid}")
+    # ゲーム進行判定（誰かが落ちたことで全員揃ったことになる場合があるため）
+    check_next_round_progress()
+    check_game_over_progress()
 
 @socketio.on('join_game')
 def on_join(data):
@@ -68,7 +82,7 @@ def on_join(data):
         # プレイヤー自身の情報を返す
         emit('self_info', {'sid': request.sid, 'role': old_player_data['role']})
         
-        # 復帰時に現在のクイズ情報を個別に送る（画面真っ白防止）
+        # 復帰時に現在のクイズ情報を個別に送る
         if game.status == "PLAYING" and game.current_quiz:
              payload = {
                 "round": game.current_round,
@@ -125,28 +139,27 @@ def start_game():
     game.status = "PLAYING"
     game.current_round = 0
     game.used_quizzes = []
-    game.team_scores = {"citizen": 0, "traitor": 0} # チームスコアリセット
+    game.team_scores = {"citizen": 0, "traitor": 0} 
     game.chat_log.append({"type": "system", "text": "=== ゲーム開始 ==="})
     
-    # 裏切り者決定 (必ず1人選出)
+    # 裏切り者決定
     sids = list(game.players.keys())
     game.traitor_sid = random.choice(sids)
     for sid in game.players:
         game.players[sid]['role'] = 'traitor' if sid == game.traitor_sid else 'citizen'
-        # 各個人に役割通知
         emit('role_assigned', {'role': game.players[sid]['role']}, room=sid)
     
     start_new_round()
 
 def start_new_round():
     game.current_round += 1
-    game.ack_next = set()
+    game.ack_next = set() # リセット
     
     if game.current_round > int(game.settings['total_rounds']):
         start_voting_phase()
         return
 
-    # クイズ選択（重複なし）
+    # クイズ選択
     available = [q for q in QUIZ_LIST if q not in game.used_quizzes]
     if not available:
         available = QUIZ_LIST
@@ -159,7 +172,6 @@ def start_new_round():
     ans_idx = (game.current_round - 1) % len(sids)
     game.current_answerer_sid = sids[ans_idx]
     
-    # クイズ情報送信
     game.chat_log.append({"type": "system", "text": f"第{game.current_round}問: {game.current_quiz['q']}"})
     
     payload = {
@@ -171,10 +183,8 @@ def start_new_round():
     
     emit('new_round', payload, broadcast=True)
     
-    # 回答者へ通知
     emit('your_turn_to_answer', {}, room=game.current_answerer_sid)
     
-    # 裏切り者へ正解通知 (確実に送る)
     if game.traitor_sid in game.players:
         emit('traitor_hint', {"answer": game.current_quiz['a']}, room=game.traitor_sid)
     
@@ -207,17 +217,15 @@ def on_submit_answer(data):
     else:
         error_pct = abs((user_ans - true_ans) / true_ans) * 100
     
-    # ポイント判定（チームスコアに加算）
+    # ポイント判定
     threshold = float(game.settings['error_margin'])
     points = 100
     winner_role_msg = ""
     
     if error_pct >= threshold:
-        # 裏切り者チーム勝利
         game.team_scores['traitor'] += points
         winner_role_msg = "裏切り者"
     else:
-        # 市民チーム勝利
         game.team_scores['citizen'] += points
         winner_role_msg = "市民チーム"
 
@@ -236,9 +244,18 @@ def on_submit_answer(data):
 @socketio.on('next_round_ack')
 def on_next_ack():
     game.ack_next.add(request.sid)
-    # 現在接続中のプレイヤー数で判定（切断者を待たないため）
-    current_players_count = len([sid for sid in game.players if sid in socketio.server.eio.sockets])
-    if len(game.ack_next) >= current_players_count and current_players_count > 0:
+    check_next_round_progress()
+
+def check_next_round_progress():
+    # ★修正: 「現在接続中」かつ「ゲーム参加中」のプレイヤーのみを分母にする
+    active_players = [sid for sid in game.players if sid in game.connected_sids]
+    if not active_players: return
+
+    # Ack済み、かつ現在も接続中のプレイヤー
+    active_acks = [sid for sid in game.ack_next if sid in game.connected_sids]
+
+    # 全員(生存者)がAckしたら次へ
+    if len(active_acks) >= len(active_players):
         start_new_round()
 
 def start_voting_phase():
@@ -255,15 +272,16 @@ def on_submit_vote(data):
     
     game.votes[request.sid] = target_sid
     
-    # 現在接続中のプレイヤー数で判定
-    current_players_count = len([sid for sid in game.players if sid in socketio.server.eio.sockets])
-    if len(game.votes) >= current_players_count and current_players_count > 0:
+    # 生存者のみで判定
+    active_players = [sid for sid in game.players if sid in game.connected_sids]
+    active_votes = [sid for sid in game.votes if sid in game.connected_sids]
+    
+    if len(active_votes) >= len(active_players) and len(active_players) > 0:
         calc_final_result()
 
 def calc_final_result():
     game.status = "RESULT"
     
-    # 最多得票者を計算
     vote_counts = {}
     for vid, tid in game.votes.items():
         vote_counts[tid] = vote_counts.get(tid, 0) + 1
@@ -280,18 +298,13 @@ def calc_final_result():
     multiplier = float(game.settings['traitor_multiplier'])
     winner_team = ""
     
-    # 最終結果判定とスコア変動
     if traitor_found:
-        # 裏切り者発見 -> 市民の勝ち
-        # 裏切り者のスコアを0にする（問答無用で負け）
         game.team_scores['traitor'] = 0
         final_msg = "裏切り者が追放されました！市民チームの完全勝利です！"
         winner_team = "citizen"
     else:
-        # 裏切り者逃げ切り -> 裏切り者のスコアn倍
         game.team_scores['traitor'] = int(game.team_scores['traitor'] * multiplier)
         final_msg = f"裏切り者は逃げ切りました... 裏切り者のスコアが{multiplier}倍になります！"
-        # スコアで最終勝敗判定
         if game.team_scores['traitor'] > game.team_scores['citizen']:
              winner_team = "traitor"
              final_msg += " 裏切り者チームの勝利！"
@@ -320,18 +333,19 @@ def calc_final_result():
 @socketio.on('reset_game_ack')
 def on_reset_ack():
     game.ack_game_over.add(request.sid)
-    current_players_count = len([sid for sid in game.players if sid in socketio.server.eio.sockets])
-    if len(game.ack_game_over) >= current_players_count and current_players_count > 0:
+    check_game_over_progress()
+
+def check_game_over_progress():
+    active_players = [sid for sid in game.players if sid in game.connected_sids]
+    if not active_players: return
+
+    active_acks = [sid for sid in game.ack_game_over if sid in game.connected_sids]
+
+    if len(active_acks) >= len(active_players):
         game.reset_game()
         emit('reload_game', broadcast=True)
 
-@socketio.on('disconnect')
-def on_disconnect():
-    print(f"Client disconnected: {request.sid}")
-    # 復帰待ちのため削除しない
-
 def emit_update_all():
-    # クイズ情報も含めて送ることで、リロード時も表示を復元しやすくする
     current_quiz_data = None
     if game.current_quiz:
         current_quiz_data = {
