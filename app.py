@@ -21,7 +21,7 @@ class GameState:
             "total_rounds": 3,
             "error_margin": 10,  # %
             "traitor_multiplier": 2, 
-            "time_limit": 3 # 制限時間(分) デフォルト3分
+            "time_limit": 3 # 制限時間(分)
         }
         self.status = "LOBBY"
         self.current_round = 0
@@ -37,8 +37,9 @@ class GameState:
         self.uuid_map = {} 
         self.connected_sids = set()
         
-        # 時間管理用
+        # 時間管理・状態フラグ
         self.round_start_time = 0
+        self.round_resolved = False # ラウンドが決着したか（回答済みor時間切れ）
 
     def get_player_list(self):
         return [{"name": p["name"], "is_ready": p["is_ready"], "sid": sid, "id": p["id"], "role": p["role"]} 
@@ -85,11 +86,9 @@ def on_join(data):
             del game.players[existing_sid]
             game.players[request.sid] = old_player_data
             
-            if game.traitor_sid == existing_sid:
-                game.traitor_sid = request.sid
-            if game.current_answerer_sid == existing_sid:
-                game.current_answerer_sid = request.sid
-            
+            # 各種ID参照の引継ぎ
+            if game.traitor_sid == existing_sid: game.traitor_sid = request.sid
+            if game.current_answerer_sid == existing_sid: game.current_answerer_sid = request.sid
             if existing_sid in game.votes:
                 target = game.votes[existing_sid]
                 del game.votes[existing_sid]
@@ -97,25 +96,28 @@ def on_join(data):
             
             emit('self_info', {'sid': request.sid, 'role': old_player_data['role']})
             
-            # 復帰時の情報送信
+            # 復帰時のラウンド情報送信
             if game.status == "PLAYING" and game.current_quiz:
                 ans_name = "不明"
                 if game.current_answerer_sid in game.players:
                     ans_name = game.players[game.current_answerer_sid]['name']
                 
-                # 経過時間を計算
-                elapsed = time.time() - game.round_start_time
+                # ★サーバー基準の経過時間を計算して送る（これで全員同期）
+                elapsed = 0
+                if game.round_start_time > 0:
+                    elapsed = time.time() - game.round_start_time
                 
                 payload = {
                     "round": game.current_round,
                     "quiz": game.current_quiz['q'],
                     "unit": game.current_quiz['u'],
                     "answerer_name": ans_name,
-                    "elapsed_time": elapsed # 経過時間を送る
+                    "elapsed_time": elapsed 
                 }
                 emit('new_round', payload, room=request.sid)
                 
-                if game.current_answerer_sid == request.sid:
+                # まだ決着がついていない場合のみ回答権を付与
+                if game.current_answerer_sid == request.sid and not game.round_resolved:
                     emit('your_turn_to_answer', {}, room=request.sid)
                 
                 if old_player_data['role'] == 'traitor':
@@ -126,7 +128,7 @@ def on_join(data):
     else:
         # --- 新規参加 ---
         if game.status != "LOBBY":
-             emit('error_msg', {'msg': 'ゲーム進行中のため、新しい名前では参加できません。復帰する場合は元の名前を入力してください。'})
+             emit('error_msg', {'msg': 'ゲーム進行中のため新規参加できません。'})
              return
              
         game.players[request.sid] = {
@@ -176,6 +178,7 @@ def start_new_round():
     game.current_round += 1
     game.ack_next = set()
     game.round_start_time = time.time() # 開始時刻記録
+    game.round_resolved = False # ラウンド状態リセット
     
     if game.current_round > int(game.settings['total_rounds']):
         start_voting_phase()
@@ -198,12 +201,13 @@ def start_new_round():
     if game.current_answerer_sid in game.players:
         ans_name = game.players[game.current_answerer_sid]['name']
     
+    # 全員に経過時間0で通知
     payload = {
         "round": game.current_round,
         "quiz": game.current_quiz['q'],
         "unit": game.current_quiz['u'],
         "answerer_name": ans_name,
-        "elapsed_time": 0 # 新規ラウンドは経過0
+        "elapsed_time": 0
     }
     
     emit('new_round', payload, broadcast=True)
@@ -225,8 +229,40 @@ def on_chat(data):
         game.chat_log.append(entry)
         emit('chat_receive', entry, broadcast=True)
 
+# ★ 時間切れイベント
+@socketio.on('time_up')
+def on_time_up():
+    # 既に回答済みや処理済みなら無視
+    if game.round_resolved:
+        return
+    
+    game.round_resolved = True # 終了フラグ
+    
+    # 裏切り者にポイント
+    points = 100
+    game.team_scores['traitor'] += points
+    winner_role_msg = "裏切り者 (時間切れ)"
+    
+    true_ans = game.current_quiz['a']
+    
+    round_result = {
+        "user_ans": "TIME UP",
+        "true_ans": true_ans,
+        "error": "---",
+        "winner": winner_role_msg,
+        "unit": game.current_quiz['u']
+    }
+    
+    game.chat_log.append({"type": "system", "text": f"時間切れ！ -> {winner_role_msg}に{points}pt"})
+    emit('round_result', round_result, broadcast=True)
+    emit_update_all()
+
 @socketio.on('submit_answer')
 def on_submit_answer(data):
+    # 決着済みなら無視 (時間切れ直後の回答などを防ぐ)
+    if game.round_resolved:
+        return
+
     if request.sid != game.current_answerer_sid:
         return
         
@@ -235,6 +271,7 @@ def on_submit_answer(data):
     except ValueError:
         return
 
+    game.round_resolved = True # 終了フラグ
     true_ans = game.current_quiz['a']
     
     if true_ans == 0:
@@ -253,7 +290,7 @@ def on_submit_answer(data):
         game.team_scores['citizen'] += points
         winner_role_msg = "市民チーム"
 
-    game.round_result = {
+    round_result = {
         "user_ans": user_ans,
         "true_ans": true_ans,
         "error": round(error_pct, 2),
@@ -261,8 +298,8 @@ def on_submit_answer(data):
         "unit": game.current_quiz['u']
     }
     
-    game.chat_log.append({"type": "system", "text": f"回答: {user_ans} (正解: {true_ans}) 誤差: {game.round_result['error']}% -> {winner_role_msg}に{points}pt"})
-    emit('round_result', game.round_result, broadcast=True)
+    game.chat_log.append({"type": "system", "text": f"回答: {user_ans} (正解: {true_ans}) 誤差: {round_result['error']}% -> {winner_role_msg}に{points}pt"})
+    emit('round_result', round_result, broadcast=True)
     emit_update_all()
 
 @socketio.on('next_round_ack')

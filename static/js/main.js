@@ -112,14 +112,10 @@ socket.on('update_status', (data) => {
         readyBtn.innerText = "準備完了";
     }
 
-    // 復帰時などのクイズ情報復元
     if(data.status === 'PLAYING' && data.current_quiz_data) {
         document.getElementById('current-round-num').innerText = data.current_round;
         document.getElementById('quiz-text').innerText = data.current_quiz_data.q;
         document.getElementById('unit-label').innerText = data.current_quiz_data.u;
-        
-        // 復帰時タイマー再開ロジックは new_round イベントで elapsed_time が来るのを待つか、
-        // ここでは正確な時間が分からないため表示更新しない（new_roundで同期される）
     }
 });
 
@@ -223,18 +219,24 @@ socket.on('new_round', (data) => {
     document.getElementById('unit-label').innerText = data.unit;
     document.getElementById('hint-value').innerText = "...";
     
-    // タイマー開始
+    // タイマー開始 (サーバーからの経過時間を受け取って同期)
     startTimer(data.elapsed_time || 0);
 });
 
+// タイマー制御関数
 function startTimer(elapsedSeconds) {
+    // 既存のタイマーがあればクリア
     if(timerInterval) clearInterval(timerInterval);
     
+    // 設定時間(分)を秒に変換
     const limitMinutes = parseInt(gameSettings.time_limit || 3);
     const totalSeconds = limitMinutes * 60;
-    let remaining = totalSeconds - elapsedSeconds;
+    
+    // 現在の残り時間を計算 (総時間 - 経過時間)
+    let remaining = totalSeconds - Math.floor(elapsedSeconds);
     
     const display = document.getElementById('time-remaining');
+    let isTimeUpSent = false;
     
     function updateDisplay() {
         if(remaining <= 0) {
@@ -242,6 +244,12 @@ function startTimer(elapsedSeconds) {
             if(timerInterval) clearInterval(timerInterval);
             display.innerText = "00:00";
             display.style.color = "red";
+            
+            // 時間切れイベント送信 (1回だけ)
+            if(!isTimeUpSent) {
+                isTimeUpSent = true;
+                socket.emit('time_up');
+            }
             return;
         }
         
@@ -252,10 +260,9 @@ function startTimer(elapsedSeconds) {
         remaining--;
     }
     
-    updateDisplay();
+    updateDisplay(); // 初回表示
     timerInterval = setInterval(updateDisplay, 1000);
 }
-
 
 socket.on('traitor_hint', (data) => {
     document.getElementById('hint-value').innerText = data.answer;
@@ -272,6 +279,7 @@ document.getElementById('submit-answer-btn').addEventListener('click', () => {
     document.getElementById('final-answer').value = '';
 });
 
+// リザルト受信
 socket.on('round_result', (data) => {
     const overlay = document.getElementById('round-result-overlay');
     document.getElementById('res-user-ans').innerText = `${data.user_ans} ${data.unit}`;
