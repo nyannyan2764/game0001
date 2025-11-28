@@ -9,6 +9,8 @@ if (!myUUID) {
 
 let mySid = null;
 let myRole = 'citizen';
+let gameSettings = {};
+let timerInterval = null;
 
 // DOM要素
 const screens = {
@@ -25,7 +27,6 @@ function showScreen(screenId) {
     screens[screenId].classList.add('active');
 }
 
-// 接続後
 socket.on('connect', () => {
     console.log("Connected");
 });
@@ -50,16 +51,19 @@ socket.on('error_msg', (data) => {
 });
 
 // 2. 設定変更 (ロビー)
-const settingsInputs = ['set-rounds', 'set-error', 'set-multi'];
+const settingsInputs = ['set-rounds', 'set-error', 'set-multi', 'set-time'];
 settingsInputs.forEach(id => {
     document.getElementById(id).addEventListener('change', () => {
         const rounds = document.getElementById('set-rounds').value;
         const error = document.getElementById('set-error').value;
         const multi = document.getElementById('set-multi').value;
+        const timeLimit = document.getElementById('set-time').value;
+        
         socket.emit('update_settings', {
             total_rounds: rounds,
             error_margin: error,
-            traitor_multiplier: multi
+            traitor_multiplier: multi,
+            time_limit: timeLimit
         });
     });
 });
@@ -71,36 +75,34 @@ document.getElementById('ready-btn').addEventListener('click', () => {
 
 // 3. ゲーム全体の状態更新
 socket.on('update_status', (data) => {
+    gameSettings = data.settings;
+
     // 設定反映
     if(data.status === 'LOBBY') {
         document.getElementById('set-rounds').value = data.settings.total_rounds;
         document.getElementById('set-error').value = data.settings.error_margin;
         document.getElementById('set-multi').value = data.settings.traitor_multiplier;
+        document.getElementById('set-time').value = data.settings.time_limit;
         
         document.getElementById('rule-error-val').innerText = data.settings.error_margin;
         document.getElementById('rule-error-val-2').innerText = data.settings.error_margin;
+        document.getElementById('rule-time-val').innerText = data.settings.time_limit;
     }
 
-    // プレイヤーリスト更新 (ロビー & サイドバー)
     updatePlayerLists(data.players);
-    
-    // チームスコア更新
     updateTeamScores(data.team_scores);
 
-    // 画面遷移制御
     if (data.status === 'LOBBY') showScreen('lobby');
     else if (data.status === 'PLAYING') showScreen('game');
     else if (data.status === 'VOTING') showScreen('voting');
     else if (data.status === 'RESULT') showScreen('result');
 
-    // 自分の役割再確認
     const me = data.players.find(p => p.sid === mySid);
     if(me) {
         myRole = me.role;
         updateRoleDisplay();
     }
     
-    // ロビーの準備ボタン状態
     const readyBtn = document.getElementById('ready-btn');
     if (me && me.is_ready) {
         readyBtn.classList.add('ready');
@@ -110,16 +112,18 @@ socket.on('update_status', (data) => {
         readyBtn.innerText = "準備完了";
     }
 
-    // 復帰時のクイズ情報復元
+    // 復帰時などのクイズ情報復元
     if(data.status === 'PLAYING' && data.current_quiz_data) {
         document.getElementById('current-round-num').innerText = data.current_round;
         document.getElementById('quiz-text').innerText = data.current_quiz_data.q;
         document.getElementById('unit-label').innerText = data.current_quiz_data.u;
+        
+        // 復帰時タイマー再開ロジックは new_round イベントで elapsed_time が来るのを待つか、
+        // ここでは正確な時間が分からないため表示更新しない（new_roundで同期される）
     }
 });
 
 function updatePlayerLists(players) {
-    // ロビーリスト
     const lobbyList = document.getElementById('lobby-player-list');
     lobbyList.innerHTML = '';
     players.forEach(p => {
@@ -133,7 +137,6 @@ function updatePlayerLists(players) {
         lobbyList.appendChild(li);
     });
 
-    // サイドバーの参加者リスト（スコアはチーム管理になったため名前のみ）
     const sidebarList = document.getElementById('sidebar-player-list');
     sidebarList.innerHTML = '';
     players.forEach(p => {
@@ -148,7 +151,6 @@ function updateTeamScores(scores) {
     document.getElementById('score-citizen-val').innerText = `${scores.citizen}pt`;
     document.getElementById('score-traitor-val').innerText = `${scores.traitor}pt`;
     
-    // 結果画面用
     document.getElementById('final-citizen-point').innerText = `${scores.citizen}pt`;
     document.getElementById('final-traitor-point').innerText = `${scores.traitor}pt`;
 }
@@ -220,7 +222,40 @@ socket.on('new_round', (data) => {
     document.getElementById('answerer-name').innerText = data.answerer_name;
     document.getElementById('unit-label').innerText = data.unit;
     document.getElementById('hint-value').innerText = "...";
+    
+    // タイマー開始
+    startTimer(data.elapsed_time || 0);
 });
+
+function startTimer(elapsedSeconds) {
+    if(timerInterval) clearInterval(timerInterval);
+    
+    const limitMinutes = parseInt(gameSettings.time_limit || 3);
+    const totalSeconds = limitMinutes * 60;
+    let remaining = totalSeconds - elapsedSeconds;
+    
+    const display = document.getElementById('time-remaining');
+    
+    function updateDisplay() {
+        if(remaining <= 0) {
+            remaining = 0;
+            if(timerInterval) clearInterval(timerInterval);
+            display.innerText = "00:00";
+            display.style.color = "red";
+            return;
+        }
+        
+        const m = Math.floor(remaining / 60);
+        const s = Math.floor(remaining % 60);
+        display.innerText = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        display.style.color = remaining < 30 ? "red" : "white";
+        remaining--;
+    }
+    
+    updateDisplay();
+    timerInterval = setInterval(updateDisplay, 1000);
+}
+
 
 socket.on('traitor_hint', (data) => {
     document.getElementById('hint-value').innerText = data.answer;
@@ -237,13 +272,15 @@ document.getElementById('submit-answer-btn').addEventListener('click', () => {
     document.getElementById('final-answer').value = '';
 });
 
-// 結果表示
 socket.on('round_result', (data) => {
     const overlay = document.getElementById('round-result-overlay');
     document.getElementById('res-user-ans').innerText = `${data.user_ans} ${data.unit}`;
     document.getElementById('res-true-ans').innerText = `${data.true_ans} ${data.unit}`;
     document.getElementById('res-error').innerText = data.error;
     document.getElementById('res-winner').innerText = data.winner;
+    
+    // タイマーストップ
+    if(timerInterval) clearInterval(timerInterval);
     
     overlay.classList.add('active');
 });
@@ -257,23 +294,13 @@ document.getElementById('next-round-btn').addEventListener('click', () => {
 // 6. 投票
 socket.on('start_voting', () => {
     document.getElementById('round-result-overlay').classList.remove('active');
-    const container = document.getElementById('vote-buttons');
-    container.innerHTML = '';
-    
-    // プレイヤーリスト取得のためサイドバーから名前を拾う簡易実装ではなく、
-    // ここではグローバルな状態保持をしていないため、サーバーからのupdate_statusを待つのが確実だが、
-    // update_statusがこの後に来る保証があるため、DOM生成はupdate_status内のrenderVoteButtonsに任せる。
-    // しかし、update_statusがVOTING状態で呼ばれるのでそちらで描画される。
+    if(timerInterval) clearInterval(timerInterval);
 });
 
-// 投票画面構築は update_status 内で行う
-let currentPlayers = [];
 socket.on('update_status', (data) => {
-    currentPlayers = data.players;
     if(data.status === 'VOTING') {
         renderVoteButtons(data.players);
     }
-    // 結果画面で勝敗バッジをつける
     if(data.status === 'RESULT' && data.winner_team) {
          const citBadge = document.getElementById('citizen-win-lose');
          const traBadge = document.getElementById('traitor-win-lose');
@@ -293,17 +320,15 @@ socket.on('update_status', (data) => {
 
 function renderVoteButtons(players) {
     const container = document.getElementById('vote-buttons');
-    // ボタンがすでにある場合は再描画しない（選択状態維持のため）
     if(container.children.length > 0) return;
 
     players.forEach(p => {
-        if (p.sid === mySid) return; // 自分には投票できない
+        if (p.sid === mySid) return;
 
         const btn = document.createElement('button');
         btn.className = 'vote-btn';
         btn.innerText = p.name;
         btn.onclick = () => {
-            // 全てのボタンの選択状態解除
             Array.from(container.children).forEach(b => b.classList.remove('selected'));
             btn.classList.add('selected');
             
@@ -320,8 +345,7 @@ function renderVoteButtons(players) {
 socket.on('game_over', (data) => {
     document.getElementById('final-message').innerText = data.msg;
     document.getElementById('final-traitor-name').innerText = data.traitor_name;
-    
-    // スコアは update_status で更新されるのでここではメッセージ系のみ
+    if(timerInterval) clearInterval(timerInterval);
 });
 
 document.getElementById('game-reset-btn').addEventListener('click', () => {
@@ -331,11 +355,9 @@ document.getElementById('game-reset-btn').addEventListener('click', () => {
 });
 
 socket.on('reload_game', () => {
-    // 全リセット
     location.reload();
 });
 
-// --- サイドバー制御 ---
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebar-toggle');
 const sidebarClose = document.getElementById('sidebar-close');
