@@ -6,7 +6,7 @@
     --accent-red: #ef4444;
     --glass-bg: rgba(30, 41, 59, 0.7);
     --glass-border: 1px solid rgba(255, 255, 255, 0.1);
-    --font-main: 'Zen Maru Gothic', sans-serif;
+    --font-main: 'Noto Serif JP', sans-serif;
     --font-display: 'Orbitron', sans-serif;
 }
 
@@ -44,7 +44,7 @@ body {
 
 /* タイトル */
 .game-title {
-    font-family: var(--font-display);
+    font-family: var(--font-main);
     font-size: 2.5rem;
     color: var(--accent-blue);
     margin-bottom: 20px;

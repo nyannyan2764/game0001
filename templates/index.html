@@ -1,91 +1,130 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <!-- ★ここから: ブラウザへの設定指示 -->
     <meta charset="UTF-8">
+    <!-- スマホで見た時に勝手に拡大縮小されないようにする設定 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>げぇむ: うそつき</title>
+    
+    <!-- ★【編集可】ブラウザのタブや検索結果に表示されるタイトル -->
+    <title>げぇむ うそつき</title>
+
+    <!-- Google Fonts（フォント）の読み込み設定 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <!-- ★【編集可】フォントを変えたい時はこの下の行のURLを書き換える -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;700&family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    
+    <!-- アイコン（トロフィーや人型など）を表示するためのライブラリ読み込み -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- ★デザイン（色や配置）を決めているCSSファイルの読み込み -->
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
 
-    <!-- 背景エフェクト -->
+    <!-- ★背景のグラデーションや粒子エフェクトを表示する専用の箱 -->
     <div class="bg-effect"></div>
 
-    <!-- サイドバー -->
+    <!-- ▼▼▼ サイドバーエリア（左側のメニュー） ▼▼▼ -->
+    
+    <!-- スマホ用：サイドバーを開くハンバーガーボタン -->
     <button id="sidebar-toggle" class="sidebar-btn"><i class="fas fa-bars"></i></button>
+    
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-header">
-            <h2>GAME DATA</h2>
+            <h2>ゲームデータ</h2>
+            <!-- サイドバーを閉じる×ボタン -->
             <button id="sidebar-close" class="close-btn"><i class="fas fa-times"></i></button>
         </div>
         
+        <!-- 1. スコア表示エリア -->
         <div class="sidebar-section">
             <h3><i class="fas fa-trophy"></i> チームスコア</h3>
             <div id="team-score-container" class="team-score-box">
+                <!-- 市民チームの点数 -->
                 <div class="score-row citizen">
                     <span class="label"><i class="fas fa-user-shield"></i> 市民</span>
+                    <!-- ★JSがここのテキスト(0pt)を書き換えます -->
                     <span id="score-citizen-val" class="value">0pt</span>
                 </div>
+                <!-- うそつきチームの点数 -->
                 <div class="score-row traitor">
-                    <span class="label"><i class="fas fa-user-secret"></i> 嘘つき</span>
+                    <span class="label"><i class="fas fa-user-secret"></i> うそつき</span>
+                    <!-- ★JSがここのテキスト(0pt)を書き換えます -->
                     <span id="score-traitor-val" class="value">0pt</span>
                 </div>
             </div>
         </div>
 
+        <!-- 2. 参加者リストエリア -->
         <div class="sidebar-section">
             <h3><i class="fas fa-users"></i> 参加者</h3>
+            <!-- ★JSがここに <li>ユーザー名</li> を自動で追加していきます -->
             <ul id="sidebar-player-list" class="styled-list-simple"></ul>
         </div>
 
+        <!-- 3. ルール説明エリア -->
         <div class="sidebar-section">
             <h3><i class="fas fa-book"></i> ルール</h3>
+            <!-- ★【編集可】ここの文章を書き換えると、ルール説明が変わります -->
             <div class="rules-text">
                 <p><strong>勝利条件:</strong> 最終的に得点が高いチームの勝ち</p>
+                <!-- spanタグの中身は設定値に応じてJSが書き換えます -->
                 <p><strong>市民チーム:</strong> 誤差を<span id="rule-error-val"></span>%未満に抑える。</p>
                 <p><strong>裏切り者:</strong> 誤差を<span id="rule-error-val-2"></span>%以上にして妨害する。正解が見えている。</p>
-                <p><strong>VOTE:</strong> 最後に裏切り者を当てれば市民の勝利。</p>
+                <p><strong>投票:</strong> 最後に裏切り者を当てれば市民の勝利。</p>
                 <p><strong>制限時間:</strong> 各ターン <span id="rule-time-val"></span>分</p>
             </div>
         </div>
 
+        <!-- 4. ログ（履歴）表示エリア -->
         <div class="sidebar-section">
-            <h3><i class="fas fa-comments"></i> ログ</h3>
+            <h3><i class="fas fa-comments"></i> 会話履歴</h3>
+            <!-- ★JSがここにゲームの進行ログを追加します -->
             <div id="chat-history" class="chat-box"></div>
         </div>
     </aside>
 
-    <!-- メインコンテンツ -->
-    <main class="main-container">
-        <h1 class="game-title">Azure Game <span class="subtitle">HORAFUKI</span></h1>
 
-        <!-- 1. ログイン画面 -->
+    <!-- ▼▼▼ メイン画面エリア（ここから画面中央のコンテンツ） ▼▼▼ -->
+    <main class="main-container">
+        
+        <!-- ★【編集可】ゲームのタイトルロゴ -->
+        <h1 class="game-title"> げぇむ <span class="subtitle">うそつき</span></h1>
+
+        <!-- 
+           ★画面切り替えの仕組み解説:
+           class="screen" がついているセクションが5つあります。
+           JavaScriptが状況に合わせて、どれか1つだけに "active" クラスをつけて表示し、
+           他を非表示(display:none)にします。
+        -->
+
+        <!-- 1. ログイン画面（名前入力） -->
         <section id="login-screen" class="screen active">
             <div class="card glass-panel">
-                <h2>ENTRY</h2>
+                <h2>参加</h2>
                 <div class="input-group">
+                    <!-- maxlength="10" は10文字までしか入力できない制限 -->
                     <input type="text" id="username" placeholder="名前を入力" maxlength="10">
                 </div>
                 <button id="join-btn" class="btn-primary glow">参加する</button>
             </div>
         </section>
 
-        <!-- 2. ロビー画面 -->
+        <!-- 2. ロビー画面（待機・設定変更） -->
         <section id="lobby-screen" class="screen">
             <div class="card glass-panel">
-                <h2>LOBBY</h2>
+                <h2>ロビー</h2>
                 <div class="settings-area">
+                    <!-- ★【編集可】value="数字" を変えると初期設定が変わります -->
                     <div class="setting-item">
                         <label>ターン数:</label>
-                        <input type="number" id="set-rounds" value="3" min="1" max="10">
+                        <input type="number" id="set-rounds" value="5" min="1" max="10">
                     </div>
                     <div class="setting-item">
                         <label>制限時間(分):</label>
-                        <input type="number" id="set-time" value="3" min="1" max="10">
+                        <input type="number" id="set-time" value="2" min="1" max="10">
                     </div>
                     <div class="setting-item">
                         <label>裏切り判定(誤差%):</label>
@@ -93,53 +132,64 @@
                     </div>
                     <div class="setting-item">
                         <label>裏切り逃切倍率:</label>
-                        <input type="number" id="set-multi" value="2" min="1" max="10">
+                        <input type="number" id="set-multi" value="1.5" min="1" max="10">
                     </div>
                     <button id="update-settings-btn" class="btn-small">設定変更</button>
                 </div>
                 
                 <div class="player-list-area">
                     <h3>待機中のプレイヤー</h3>
+                    <!-- ロビー専用の参加者リスト -->
                     <ul id="lobby-player-list" class="styled-list"></ul>
                 </div>
 
                 <div class="lobby-actions">
                     <button id="ready-btn" class="btn-secondary">準備完了</button>
+                    <!-- 準備状況を表示するテキスト -->
                     <p id="waiting-msg" class="status-text">全員の準備を待っています...</p>
                 </div>
             </div>
         </section>
 
-        <!-- 3. ゲーム画面 -->
+        <!-- 3. ゲームプレイ画面（メイン） -->
         <section id="game-screen" class="screen">
+            
             <!-- 役割表示バー -->
             <div id="role-indicator" class="role-bar">
                 あなたは <span id="my-role-display">---</span> です
+                <!-- 裏切り者だけに表示されるヒントエリア (初期状態は非表示) -->
                 <span id="traitor-hint" style="display:none; color:#ff4d4d; margin-left:10px;">(正解: <span id="hint-value"></span>)</span>
             </div>
 
-            <!-- タイマー -->
+            <!-- タイマー表示 -->
             <div id="timer-display" class="timer-box">
                 <i class="fas fa-clock"></i> 残り <span id="time-remaining">--:--</span>
             </div>
 
+            <!-- クイズ問題文エリア -->
             <div class="card glass-panel quiz-panel">
-                <div class="round-badge">ROUND <span id="current-round-num">1</span></div>
+                <div class="round-badge">round <span id="current-round-num">1</span></div>
+                <!-- ★JSがサーバーから受け取った問題文をここにセットします -->
                 <h3 id="quiz-text" class="quiz-question">読み込み中...</h3>
             </div>
 
-            <!-- 会議/チャットエリア -->
+            <!-- 会議チャットエリア -->
             <div class="discussion-area">
+                <!-- チャットのメッセージが流れる箱 -->
                 <div id="game-chat-box" class="chat-box-large"></div>
+                <!-- 入力欄と送信ボタン -->
                 <div class="chat-input-row">
-                    <input type="text" id="chat-input" placeholder="数値を提案 / 会話">
+                    <input type="text" id="chat-input" placeholder="自由に書き込んでください">
                     <button id="send-chat-btn"><i class="fas fa-paper-plane"></i></button>
                 </div>
             </div>
 
-            <!-- 回答エリア -->
+            <!-- 回答入力エリア（回答者のみ表示） -->
             <div id="answer-area" class="answer-panel">
+                <!-- 「OOさんが回答中」の表示 -->
                 <p><span id="answerer-name">OOさん</span>が回答中...</p>
+                
+                <!-- 自分が回答者の時だけJSが表示(display:block)に切り替える箱 -->
                 <div id="my-answer-controls" style="display:none;">
                     <input type="number" id="final-answer" placeholder="答えを入力" step="any">
                     <span id="unit-label"></span>
@@ -147,15 +197,15 @@
                 </div>
             </div>
 
-            <!-- ラウンド結果モーダル -->
+            <!-- ラウンド結果表示ポップアップ（オーバーレイ） -->
             <div id="round-result-overlay" class="overlay">
                 <div class="overlay-content glass-panel">
-                    <h2>RESULT</h2>
+                    <h2>結果</h2>
                     <p class="big-text">回答: <span id="res-user-ans"></span></p>
                     <p>正解: <span id="res-true-ans"></span></p>
                     <p>誤差: <span id="res-error"></span>%</p>
                     <div class="winner-box">
-                        <span id="res-winner"></span> にポイント！
+                        <span id="res-winner"></span> に100ポイント加わります
                     </div>
                     <button id="next-round-btn" class="btn-primary">次へ</button>
                     <p id="next-wait-msg">他のプレイヤーを待っています...</p>
@@ -163,41 +213,48 @@
             </div>
         </section>
 
-        <!-- 4. 投票画面 -->
+        <!-- 4. 投票画面（全ラウンド終了後） -->
         <section id="voting-screen" class="screen">
             <div class="card glass-panel">
-                <h2>FINAL VOTE</h2>
-                <p>裏切り者だと思う人を指名してください</p>
+                <h2>最終投票</h2>
+                <p>裏切り者を指名してください</p>
+                <!-- ★JSが参加人数分のボタンを作ってここに並べます -->
                 <div id="vote-buttons" class="grid-buttons"></div>
                 <p id="vote-wait-msg" style="display:none;">投票完了。結果を待っています...</p>
             </div>
         </section>
 
-        <!-- 5. 最終結果画面 -->
+        <!-- 5. 最終結果画面（エンディング） -->
         <section id="result-screen" class="screen">
             <div class="card glass-panel result-card">
-                <h2>GAME SET</h2>
+                <h2>げぇむ終了</h2>
+                <!-- 勝敗メッセージ（市民の勝利！など） -->
                 <p id="final-message" class="final-msg"></p>
                 
+                <!-- 裏切り者の正体ばらしエリア -->
                 <div class="traitor-reveal">
                     裏切り者は... <br>
                     <span id="final-traitor-name" class="reveal-name"></span>
                 </div>
                 
+                <!-- 最終スコアボード -->
                 <div class="final-score-area">
                     <h3>最終スコア</h3>
                     <div class="final-team-score citizen" id="final-citizen-score-box">
-                        <span class="team-name"><i class="fas fa-user-shield"></i> 市民チーム</span>
+                        <span class="team-name"><i class="fas fa-user-shield"></i> 市民</span>
                         <span class="team-point" id="final-citizen-point">0pt</span>
+                        <!-- WIN / LOSE のバッジ -->
                         <span class="win-lose-badge" id="citizen-win-lose"></span>
                     </div>
                     <div class="final-team-score traitor" id="final-traitor-score-box">
-                        <span class="team-name"><i class="fas fa-user-secret"></i> 裏切り者</span>
+                        <span class="team-name"><i class="fas fa-user-secret"></i> うそつき</span>
                         <span class="team-point" id="final-traitor-point">0pt</span>
+                        <!-- WIN / LOSE のバッジ -->
                         <span class="win-lose-badge" id="traitor-win-lose"></span>
                     </div>
                 </div>
 
+                <!-- 最初の画面に戻るボタン -->
                 <button id="game-reset-btn" class="btn-danger">ゲーム終了 (全員リセット)</button>
                 <p id="reset-wait-msg" style="display:none;">全員の終了確認待ち...</p>
             </div>
@@ -205,7 +262,9 @@
 
     </main>
 
+    <!-- ★通信用ライブラリ (Socket.IO) の読み込み -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
+    <!-- ★ゲームの動き（ロジック）を書いたメインJSファイルの読み込み -->
     <script src="/static/js/main.js"></script>
 </body>
 </html>
